@@ -18,7 +18,7 @@ struct mspSensorAirspeedDataMessage_t {
 
 Stream * _stream;
 uint32_t _timeout;
-mspSensorAirspeedDataMessage_t speedSensor = { 0, 1, 0.2, 3};
+mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
 
 
 void mspReset()
@@ -28,7 +28,7 @@ void mspReset()
     _stream->read();
 }
 // https://github.com/iNavFlight/inav/wiki/MSP-V2
-void send(uint8_t messageID, void * payload, uint8_t size)
+void send(uint16_t messageID, void * payload, uint8_t size)
 {
   uint8_t flag = 0;
   _stream->write('$');
@@ -66,38 +66,38 @@ void sendV2(uint8_t messageID, void * payload, uint16_t size)
   Serial.write(checksum);
 }
 
-void sendDebug(uint8_t messageID, void * payload, uint16_t size)
+void sendDebug(uint16_t messageID, void * payload, uint16_t size)
 {
   uint8_t flag = 0;
-  Serial.print('$');
+  Serial.print('$', HEX);
   Serial.print('-');
-  Serial.print('X');
+  Serial.print('X', HEX);
   Serial.print('-');
-  Serial.print('<');
+  Serial.print('<', HEX);
   Serial.print('-');
-  Serial.print(flag);
+  Serial.print(flag, HEX);
   Serial.print('-');
-  Serial.print(messageID);
+  Serial.print(messageID, HEX);
   Serial.print('-');
-  Serial.print(size);
+  Serial.print(size, HEX);
   Serial.print('-');
   uint8_t checksum = 0;
   uint8_t * payloadPtr = (uint8_t*)payload;
   for (uint8_t i = 0; i < size; ++i) {
     uint8_t b = *(payloadPtr++);
     checksum = crc8_dvb_s2(checksum, b);
-    Serial.print(b);
+    Serial.print(b, HEX);
     Serial.print('-');
   }
-  Serial.print(checksum);
+  Serial.print(checksum, HEX);
+  Serial.println("");
 }
 
 void setup() {
     //SPL_init(SPL_1);
     //SPL_init(SPL_2);
-    //send(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+    
     Serial.begin(19200);
-    Serial.println("sono vivo");
   // put your setup code here, to run once:
 
 }

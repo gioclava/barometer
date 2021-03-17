@@ -1,6 +1,13 @@
 #include "SPL06-007.h"
 #include "Wire.h"
 
+nel loop chiamo un checkPressure per ogni barometro che svuota il FIFO e lo salva in 
+2 oggetti con le ultime tre misure e il loro timestamp
+la pressione viene calcolata sempre con la temperatura disponibile
+a un intervallo definito leggermente piu lungo dell intervallo tra le misure, calcolo i valori delle 2 pressioni all intervallo precedente usando una regressione lineare tra i 2 punti che contengono il timestamp del intervallo precendente
+controllare se i coefficienti cambiano o sono fissi nel tempo, nel primo caso leggerli alla richiesta della pressione compensata, nel secondo caso leggerli all init
+
+
 void SPL_init(uint8_t spl_chip_address)
 {
 	// ---- Oversampling of >8x for temperature or pressuse requires FIFO operational mode which is not implemented ---
@@ -12,6 +19,19 @@ void SPL_init(uint8_t spl_chip_address)
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0111);	// continuous temp and pressure measurement
 
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0X00);	// FIFO Pressure measurement  
+}
+
+void SPL_init_precise(uint8_t spl_chip_address)
+{
+	// ---- Oversampling of >8x for temperature or pressuse requires FIFO operational mode which is not implemented ---
+	// ---- Use rates of 8x or less until feature is implemented ---
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x36); //0x26 richiesto da datasheet
+
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0XA0);
+
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0111);	// continuous temp and pressure measurement
+
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0B110);	// FIFO Pressure measurement  
 }
 
 uint8_t get_spl_id(uint8_t spl_chip_address)
@@ -250,6 +270,50 @@ double get_pressure_scale_factor(uint8_t spl_chip_address)
 	return k;
 }
 
+
+int32_t get_fifo_measure(uint8_t spl_chip_address)
+{
+  int32_t measure;
+  uint8_t measure_MSB,measure_LSB,measure_XLSB;
+  measure_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X00); // MSB
+
+
+  measure_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X01); // LSB
+
+
+  measure_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X02); // XLSB
+
+  
+  measure = (measure_MSB << 8) | measure_LSB;
+  measure = (measure << 8) | measure_XLSB;
+
+
+
+  if(measure & (1 << 23))
+    measure = measure | 0XFF000000; // Set left bits to one for 2's complement conversion of negitive number
+  
+  
+  return measure;
+}
+
+bool isFifoAvailable(uint8_t spl_chip_address){
+  return !(get_spl_fifo_sts(spl_chip_address) && 0B01);
+
+}
+
+void checkPressure(spl_chip_address){
+  unit32_t measure = get_fifo_measure(uint8_t spl_chip_address);
+  while(measure!=0x800000)){  
+    if(measure && 0B01) {
+      //save pressure in 3 items array
+
+    }
+    else{
+      //save temperature
+    }
+    measure = get_fifo_measure(uint8_t spl_chip_address);
+  }
+}
 
 
 
