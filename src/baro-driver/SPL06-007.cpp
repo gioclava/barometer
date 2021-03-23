@@ -1,42 +1,95 @@
 #include "SPL06-007.h"
 #include "Wire.h"
 
-nel loop chiamo un checkPressure per ogni barometro che svuota il FIFO e lo salva in 
-2 oggetti con le ultime tre misure e il loro timestamp
-la pressione viene calcolata sempre con la temperatura disponibile
-a un intervallo definito leggermente piu lungo dell intervallo tra le misure, calcolo i valori delle 2 pressioni all intervallo precedente usando una regressione lineare tra i 2 punti che contengono il timestamp del intervallo precendente
-controllare se i coefficienti cambiano o sono fissi nel tempo, nel primo caso leggerli alla richiesta della pressione compensata, nel secondo caso leggerli all init
-
-
-void SPL_init(uint8_t spl_chip_address)
-{
-	// ---- Oversampling of >8x for temperature or pressuse requires FIFO operational mode which is not implemented ---
-	// ---- Use rates of 8x or less until feature is implemented ---
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x03);	// Pressure 8x oversampling
-
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0X83);	// Temperature 8x oversampling
-
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0111);	// continuous temp and pressure measurement
-
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0X00);	// FIFO Pressure measurement  
-}
+int32_t front_pressure_raw;
+int32_t front_temperature_raw;
+int32_t middle_pressure_raw;
+int32_t middle_temperature_raw;
+uint8_t front_address = 0x76;
+uint8_t middle_address = 0x77;
+double front_pressure_scale_factor;
+double middle_pressure_scale_factor;
+double front_temperature_scale_factor;
+double middle_temperature_scale_factor;
+int32_t front_c00, front_c10;
+int16_t front_c01, front_c11, front_c20, front_c21, front_c30;
+int32_t middle_c00, middle_c10;
+int16_t middle_c01, middle_c11, middle_c20, middle_c21, middle_c30;
+int16_t middle_c0,middle_c1;
+int16_t front_c0,front_c1;
 
 void SPL_init_precise(uint8_t spl_chip_address)
 {
-	// ---- Oversampling of >8x for temperature or pressuse requires FIFO operational mode which is not implemented ---
-	// ---- Use rates of 8x or less until feature is implemented ---
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x36); //0x26 richiesto da datasheet
 
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0XA0);
 
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0111);	// continuous temp and pressure measurement
 
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0B110);	// FIFO Pressure measurement  
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0B110);	// FIFO Pressure measurement
+}
+
+void SPL_init()
+{
+  SPL_init_precise(middle_address);
+  SPL_init_precise(front_address);
+  middle_pressure_scale_factor = get_pressure_scale_factor(middle_address);
+  front_pressure_scale_factor = get_pressure_scale_factor(front_address);
+  middle_temperature_scale_factor = get_pressure_scale_factor(middle_address);
+  front_temperature_scale_factor = get_pressure_scale_factor(front_address);
+  middle_c00 = get_c00(middle_address);
+	middle_c10 = get_c10(middle_address);
+	middle_c01 = get_c01(middle_address);
+	middle_c11 = get_c11(middle_address);
+	middle_c20 = get_c20(middle_address);
+	middle_c21 = get_c21(middle_address);
+	middle_c30 = get_c30(middle_address);
+  front_c00 = get_c00(front_address);
+	front_c10 = get_c10(front_address);
+	front_c01 = get_c01(front_address);
+	front_c11 = get_c11(front_address);
+	front_c20 = get_c20(front_address);
+	front_c21 = get_c21(front_address);
+	front_c30 = get_c30(front_address);
+  middle_c0 = get_c0(middle_address);
+	middle_c1 = get_c1(middle_address);
+  front_c0 = get_c0(front_address);
+	front_c1 = get_c1(front_address);
+}
+
+
+
+double calculatePressure(int32_t c00, int32_t c10, int16_t c01, int16_t c11, int16_t c20, int16_t c21, int16_t c30, double temperature_scale_factor, double pressure_scale_factor,int32_t pressure_raw, int32_t temperature_raw){
+  double traw_sc = (double(temperature_raw)/temperature_scale_factor);
+	double praw_sc = (double(pressure_raw)/pressure_scale_factor);
+	return double(c00) + praw_sc * (double(c10) + praw_sc * (double(c20) + praw_sc * double(c30))) + traw_sc * double(c01) + traw_sc * praw_sc * (double(c11) + praw_sc * double(c21));
+}
+
+double calculateTemperatureC(double temperature_scale_factor, int32_t temperature_raw, int16_t c0,int16_t c1)
+{
+  double traw_sc = (double(temperature_raw)/temperature_scale_factor);
+	return (double(c0) * 0.5f) + (double(c1) * traw_sc);
+}
+
+double getFrontPressure(){
+  return calculatePressure(front_c00, front_c10, front_c01, front_c11, front_c20, front_c21, front_c30, front_temperature_scale_factor, front_pressure_scale_factor, front_pressure_raw, front_temperature_raw);
+}
+
+double getMiddlePressure(){
+  return calculatePressure(middle_c00, middle_c10, middle_c01, middle_c11, middle_c20, middle_c21, middle_c30, middle_temperature_scale_factor, middle_pressure_scale_factor, middle_pressure_raw, middle_temperature_raw);
+}
+
+double getFrontTemperature(){
+  return calculateTemperatureC(front_temperature_scale_factor, front_temperature_raw,front_c0, front_c1);
+}
+
+double getMiddleTemperature(){
+  return calculateTemperatureC(middle_temperature_scale_factor, middle_temperature_raw,middle_c0, middle_c1);
 }
 
 uint8_t get_spl_id(uint8_t spl_chip_address)
 {
-	return i2c_eeprom_read_uint8_t(spl_chip_address, 0x0D);	
+	return i2c_eeprom_read_uint8_t(spl_chip_address, 0x0D);
 }
 
 uint8_t get_spl_prs_cfg(uint8_t spl_chip_address)
@@ -301,18 +354,30 @@ bool isFifoAvailable(uint8_t spl_chip_address){
 
 }
 
-void checkPressure(spl_chip_address){
-  unit32_t measure = get_fifo_measure(uint8_t spl_chip_address);
-  while(measure!=0x800000)){  
-    if(measure && 0B01) {
-      //save pressure in 3 items array
-
+boolean pressureAvailable(){
+  boolean pressureAvailable = false;
+  int32_t middle_measure = get_fifo_measure(middle_address);
+  while(middle_measure!=0x800000){  
+    if(middle_measure && 0B01) {
+      middle_pressure_raw = middle_measure;
     }
     else{
-      //save temperature
+      middle_temperature_raw = middle_measure;
     }
-    measure = get_fifo_measure(uint8_t spl_chip_address);
+    middle_measure = get_fifo_measure(middle_address);
   }
+  int32_t front_measure = get_fifo_measure(middle_address);
+  while(front_measure!=0x800000){  
+    if(front_measure && 0B01) {
+      front_pressure_raw = front_measure;
+      pressureAvailable = true;
+    }
+    else{
+      front_temperature_raw = front_measure;
+    }
+    front_measure = get_fifo_measure(front_address);
+  }
+  return pressureAvailable;
 }
 
 

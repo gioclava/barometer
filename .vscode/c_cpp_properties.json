@@ -1,10 +1,12 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
 {
     "configurations": [
         {
-            "name": "!!! WARNING !!! AUTO-GENERATED FILE, PLEASE DO NOT MODIFY IT AND USE https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags"
-        },
-        {
-            "name": "Win32",
+            "name": "PlatformIO",
             "includePath": [
                 "C:/Users/clava/Documents/PlatformIO/Projects/barometer/include",
                 "C:/Users/clava/Documents/PlatformIO/Projects/barometer/src",
@@ -43,7 +45,7 @@
                 ]
             },
             "defines": [
-                "PLATFORMIO=50003",
+                "PLATFORMIO=50101",
                 "ARDUINO_AVR_ATmega328P",
                 "F_CPU=16000000L",
                 "ARDUINO_ARCH_AVR",
@@ -51,7 +53,6 @@
                 "__AVR_ATmega328P__",
                 ""
             ],
-            "intelliSenseMode": "gcc-x64",
             "cStandard": "c11",
             "cppStandard": "c++11",
             "compilerPath": "C:/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe",
