@@ -20,7 +20,7 @@ int16_t front_c0,front_c1;
 
 void SPL_init_precise(uint8_t spl_chip_address)
 {
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x36); //0x26 richiesto da datasheet
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x26); //0x26 richiesto da datasheet
 
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0XA0);
 
@@ -335,17 +335,25 @@ int32_t get_fifo_measure(uint8_t spl_chip_address)
 
 
   measure_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X02); // XLSB
-
-  
+  Serial.println("3 bytes");
+  Serial.println(measure_MSB, BIN);
+  Serial.println(measure_LSB, BIN);
+  Serial.println(measure_XLSB, BIN);
+  Serial.println("building single measure");
   measure = (measure_MSB << 8) | measure_LSB;
+  Serial.println(measure, BIN);
   measure = (measure << 8) | measure_XLSB;
+  Serial.println("pre 2 complements");
+  Serial.println(measure, BIN);
+  Serial.println("condition");
+  Serial.println(measure & (1 << 23), BIN);
 
 
 
   if(measure & (1 << 23))
     measure = measure | 0XFF000000; // Set left bits to one for 2's complement conversion of negitive number
-  
-  
+  Serial.println("final");
+  Serial.println(measure, BIN);
   return measure;
 }
 
@@ -357,7 +365,7 @@ bool isFifoAvailable(uint8_t spl_chip_address){
 boolean pressureAvailable(){
   boolean pressureAvailable = false;
   int32_t middle_measure = get_fifo_measure(middle_address);
-  while(middle_measure!=0x800000){  
+  while(middle_measure!=0xFF800000){ 
     if(middle_measure && 0B01) {
       middle_pressure_raw = middle_measure;
     }
@@ -366,8 +374,8 @@ boolean pressureAvailable(){
     }
     middle_measure = get_fifo_measure(middle_address);
   }
-  int32_t front_measure = get_fifo_measure(middle_address);
-  while(front_measure!=0x800000){  
+  int32_t front_measure = get_fifo_measure(front_measure);
+  while(front_measure!=0xFF800000){  
     if(front_measure && 0B01) {
       front_pressure_raw = front_measure;
       pressureAvailable = true;

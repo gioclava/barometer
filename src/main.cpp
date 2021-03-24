@@ -2,7 +2,6 @@
 #include <Stream.h>
 #include <baro-driver/SPL06-007.h>
 #include <crc/crc.h>
-
 #include <Wire.h>
 
 #define DEBUG       1
@@ -94,25 +93,35 @@ void sendDebug(uint16_t messageID, void * payload, uint16_t size)
 }
 
 void setup() {
-    SPL_init();
-    
+    Wire.begin();
     Serial.begin(19200);
+    delay(1000);
+    Serial.println("SPL init");
+    delay(1000);
+    SPL_init();
+    Serial.println("SPL init finished");
+    
+
   // put your setup code here, to run once:
 
 }
 
 void loop() {
-  delay(5000);
-  if(pressureAvailable()){
+  delay(500);
+  //if(pressureAvailable()){
+  if(false){
     double frontPressure = getFrontPressure();
     double middlePressure = getMiddlePressure();
     double middleTemperature = getMiddleTemperature();
-
-
+    if(true){
+    Serial.println(middlePressure);
+    }
     mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
     if(DEBUG){
-      sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
+      //sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+      }
     else{
       sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
   }
+  delay(5000);
 }
