@@ -95,26 +95,21 @@ void sendDebug(uint16_t messageID, void * payload, uint16_t size)
 void setup() {
     Wire.begin();
     Serial.begin(19200);
-    delay(1000);
     Serial.println("SPL init");
-    delay(1000);
     SPL_init();
     Serial.println("SPL init finished");
-    
-
-  // put your setup code here, to run once:
 
 }
 
 void loop() {
-  delay(500);
-  //if(pressureAvailable()){
-  if(false){
+  if(pressureAvailable()){
     double frontPressure = getFrontPressure();
     double middlePressure = getMiddlePressure();
     double middleTemperature = getMiddleTemperature();
+    double frontTemperature = getFrontTemperature();
+    double difference = frontPressure-middlePressure;
     if(true){
-    Serial.println(middlePressure);
+      Serial.println(difference);
     }
     mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
     if(DEBUG){
@@ -123,5 +118,4 @@ void loop() {
     else{
       sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
   }
-  delay(5000);
 }

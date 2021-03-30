@@ -17,26 +17,29 @@ int32_t middle_c00, middle_c10;
 int16_t middle_c01, middle_c11, middle_c20, middle_c21, middle_c30;
 int16_t middle_c0,middle_c1;
 int16_t front_c0,front_c1;
+uint8_t state = 0;
+
 
 void SPL_init_precise(uint8_t spl_chip_address)
 {
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0x26); //0x26 richiesto da datasheet
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0B0110); //0x26 richiesto da datasheet
 
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0XA0);
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0B10000010);
 
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0111);	// continuous temp and pressure measurement
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X08, 0B0);	// continuous temp and pressure measurement
 
-	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0B110);	// FIFO Pressure measurement
+	i2c_eeprom_write_uint8_t(spl_chip_address, 0X09, 0B100);	// FIFO Pressure measurement
 }
 
 void SPL_init()
 {
   SPL_init_precise(middle_address);
   SPL_init_precise(front_address);
+  while(!(get_spl_meas_cfg(middle_address) & 0B10000000)){
+    delay(5);
+  }
   middle_pressure_scale_factor = get_pressure_scale_factor(middle_address);
-  front_pressure_scale_factor = get_pressure_scale_factor(front_address);
-  middle_temperature_scale_factor = get_pressure_scale_factor(middle_address);
-  front_temperature_scale_factor = get_pressure_scale_factor(front_address);
+  middle_temperature_scale_factor = get_temperature_scale_factor(middle_address);
   middle_c00 = get_c00(middle_address);
 	middle_c10 = get_c10(middle_address);
 	middle_c01 = get_c01(middle_address);
@@ -44,6 +47,13 @@ void SPL_init()
 	middle_c20 = get_c20(middle_address);
 	middle_c21 = get_c21(middle_address);
 	middle_c30 = get_c30(middle_address);
+  middle_c0 = get_c0(middle_address);
+	middle_c1 = get_c1(middle_address);
+  while(!(get_spl_meas_cfg(front_address) & 0B10000000)){
+    delay(5);
+  }
+  front_pressure_scale_factor = get_pressure_scale_factor(front_address);
+  front_temperature_scale_factor = get_temperature_scale_factor(front_address);
   front_c00 = get_c00(front_address);
 	front_c10 = get_c10(front_address);
 	front_c01 = get_c01(front_address);
@@ -51,13 +61,12 @@ void SPL_init()
 	front_c20 = get_c20(front_address);
 	front_c21 = get_c21(front_address);
 	front_c30 = get_c30(front_address);
-  middle_c0 = get_c0(middle_address);
-	middle_c1 = get_c1(middle_address);
   front_c0 = get_c0(front_address);
 	front_c1 = get_c1(front_address);
+  while(!(get_spl_meas_cfg(front_address) & get_spl_meas_cfg(front_address) & 0B11000000)){
+    delay(5);
+  }  
 }
-
-
 
 double calculatePressure(int32_t c00, int32_t c10, int16_t c01, int16_t c11, int16_t c20, int16_t c21, int16_t c30, double temperature_scale_factor, double pressure_scale_factor,int32_t pressure_raw, int32_t temperature_raw){
   double traw_sc = (double(temperature_raw)/temperature_scale_factor);
@@ -176,16 +185,8 @@ double get_temperature_scale_factor(uint8_t spl_chip_address)
 
   uint8_t tmp_Byte;
   tmp_Byte = i2c_eeprom_read_uint8_t(spl_chip_address, 0X07); // MSB
-
-  //Serial.print("tmp_Byte: ");
-  //Serial.println(tmp_Byte);
-
-  //tmp_Byte = tmp_Byte >> 4; //Focus on bits 6-4
   tmp_Byte = tmp_Byte & 0B00000111;
-  //Serial.print("tmp_Byte: ");
-  //Serial.println(tmp_Byte);
-
-  switch (tmp_Byte) 
+  switch (tmp_Byte)
   {
     case 0B000:
       k = (double) 524288.0;
@@ -224,25 +225,28 @@ double get_temperature_scale_factor(uint8_t spl_chip_address)
 }
 
 
-int32_t get_traw(uint8_t spl_chip_address)
-{
-  int32_t tmp;
-  uint8_t tmp_MSB,tmp_LSB,tmp_XLSB;
-  tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X03); // MSB
+int32_t get_traw(uint8_t spl_chip_address){
+    uint8_t rdata = 0xFF;
+    int32_t measure;
+    uint8_t measure_MSB,measure_LSB,measure_XLSB;
+    Wire.beginTransmission(spl_chip_address);
+    Wire.write(0X03); 
+    Wire.endTransmission(false); // false to not release the line
+    Wire.requestFrom(spl_chip_address, 3);
+    if (Wire.available() == 3){
+      measure_MSB = Wire.read();
+      measure_LSB = Wire.read();
+      measure_XLSB = Wire.read();
+    }
+    else {
+      while(Wire.available()){
+        Wire.read();
+      }
+      return 0xFF800000;
+    }
 
-  tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X04); // LSB
-
-  tmp_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X05); // XLSB
-
-  tmp = (tmp_MSB << 8) | tmp_LSB;
-  tmp = (tmp << 8) | tmp_XLSB;
-
-
-  if(tmp & (1 << 23))
-    tmp = tmp | 0XFF000000; // Set left bits to one for 2's complement conversion of negitive number
-  
-  
-  return tmp;
+  measure = (int32_t)((measure_MSB & 0x80 ? 0xFF000000 : 0) | (((uint32_t)(measure_MSB)) << 16) | (((uint32_t)(measure_LSB)) << 8) | ((uint32_t)measure_XLSB));
+  return measure;
 }
 
 double get_praw_sc(uint8_t spl_chip_address)
@@ -324,36 +328,27 @@ double get_pressure_scale_factor(uint8_t spl_chip_address)
 }
 
 
-int32_t get_fifo_measure(uint8_t spl_chip_address)
-{
-  int32_t measure;
-  uint8_t measure_MSB,measure_LSB,measure_XLSB;
-  measure_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X00); // MSB
+int32_t get_fifo_measure(uint8_t spl_chip_address){
+    uint8_t rdata = 0xFF;
+    int32_t measure;
+    uint8_t measure_MSB,measure_LSB,measure_XLSB;
+    Wire.beginTransmission(spl_chip_address);
+    Wire.write(0X00); 
+    Wire.endTransmission(false); // false to not release the line
+    Wire.requestFrom(spl_chip_address, 3);
+    if (Wire.available() == 3){
+      measure_MSB = Wire.read();
+      measure_LSB = Wire.read();
+      measure_XLSB = Wire.read();
+    }
+    else {
+      while(Wire.available()){
+        Wire.read();
+      }
+      return 0xFF800000;
+    }
 
-
-  measure_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X01); // LSB
-
-
-  measure_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X02); // XLSB
-  Serial.println("3 bytes");
-  Serial.println(measure_MSB, BIN);
-  Serial.println(measure_LSB, BIN);
-  Serial.println(measure_XLSB, BIN);
-  Serial.println("building single measure");
-  measure = (measure_MSB << 8) | measure_LSB;
-  Serial.println(measure, BIN);
-  measure = (measure << 8) | measure_XLSB;
-  Serial.println("pre 2 complements");
-  Serial.println(measure, BIN);
-  Serial.println("condition");
-  Serial.println(measure & (1 << 23), BIN);
-
-
-
-  if(measure & (1 << 23))
-    measure = measure | 0XFF000000; // Set left bits to one for 2's complement conversion of negitive number
-  Serial.println("final");
-  Serial.println(measure, BIN);
+  measure = (int32_t)((measure_MSB & 0x80 ? 0xFF000000 : 0) | (((uint32_t)(measure_MSB)) << 16) | (((uint32_t)(measure_LSB)) << 8) | ((uint32_t)measure_XLSB));
   return measure;
 }
 
@@ -363,56 +358,64 @@ bool isFifoAvailable(uint8_t spl_chip_address){
 }
 
 boolean pressureAvailable(){
-  boolean pressureAvailable = false;
-  int32_t middle_measure = get_fifo_measure(middle_address);
-  while(middle_measure!=0xFF800000){ 
-    if(middle_measure && 0B01) {
-      middle_pressure_raw = middle_measure;
-    }
-    else{
-      middle_temperature_raw = middle_measure;
-    }
-    middle_measure = get_fifo_measure(middle_address);
+
+  if(state == 0){
+    //initiate measure of pressure on both baros
+    i2c_eeprom_write_uint8_t(middle_address, 0X08, 0B1);
+    i2c_eeprom_write_uint8_t(front_address, 0X08, 0B1);
+    state = 1;
   }
-  int32_t front_measure = get_fifo_measure(front_measure);
-  while(front_measure!=0xFF800000){  
-    if(front_measure && 0B01) {
-      front_pressure_raw = front_measure;
-      pressureAvailable = true;
-    }
-    else{
-      front_temperature_raw = front_measure;
-    }
-    front_measure = get_fifo_measure(front_address);
+  else if(state == 2){
+    //initiate measure of temperature on both baros
+    i2c_eeprom_write_uint8_t(middle_address, 0X08, 0B10);
+    i2c_eeprom_write_uint8_t(front_address, 0X08, 0B10);
+    state = 3;
   }
-  return pressureAvailable;
+  else if(state == 1){
+    //read pressure on both baros
+    if((get_spl_meas_cfg(middle_address) & 0b010000) && (get_spl_meas_cfg(front_address) & 0b010000)){
+      middle_pressure_raw = get_praw(middle_address);
+      front_pressure_raw = get_praw(front_address);
+      state = 2;
+    }
+  }
+  else if(state == 3){
+    //read temperature on both baros
+    if((get_spl_meas_cfg(middle_address) & 0b0100000) && (get_spl_meas_cfg(front_address) & 0b0100000)){
+      middle_temperature_raw = get_traw(middle_address);
+      front_temperature_raw = get_traw(front_address);
+      state = 0;
+      return true;
+    }
+  }
+  return false;
 }
 
 
 
 int32_t get_praw(uint8_t spl_chip_address)
 {
-  int32_t tmp;
-  uint8_t tmp_MSB,tmp_LSB,tmp_XLSB;
-  tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X00); // MSB
+    uint8_t rdata = 0xFF;
+    int32_t measure;
+    uint8_t measure_MSB,measure_LSB,measure_XLSB;
+    Wire.beginTransmission(spl_chip_address);
+    Wire.write(0X00); 
+    Wire.endTransmission(false); // false to not release the line
+    Wire.requestFrom(spl_chip_address, 3);
+    if (Wire.available() == 3){
+      measure_MSB = Wire.read();
+      measure_LSB = Wire.read();
+      measure_XLSB = Wire.read();
+    }
+    else {
+      while(Wire.available()){
+        Wire.read();
+      }
+      return 0xFF800000;
+    }
 
-
-  tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X01); // LSB
-
-
-  tmp_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X02); // XLSB
-
-  
-  tmp = (tmp_MSB << 8) | tmp_LSB;
-  tmp = (tmp << 8) | tmp_XLSB;
-
-
-
-  if(tmp & (1 << 23))
-    tmp = tmp | 0XFF000000; // Set left bits to one for 2's complement conversion of negitive number
-  
-  
-  return tmp;
+  measure = (int32_t)((measure_MSB & 0x80 ? 0xFF000000 : 0) | (((uint32_t)(measure_MSB)) << 16) | (((uint32_t)(measure_LSB)) << 8) | ((uint32_t)measure_XLSB));
+  return measure;
 }
 
 int16_t get_c0(uint8_t spl_chip_address)
@@ -422,17 +425,7 @@ int16_t get_c0(uint8_t spl_chip_address)
   
   tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X10); 
   tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X11); 
-
-
-
-  tmp_LSB = tmp_LSB >> 4;
-
-
-  tmp = (tmp_MSB << 4) | tmp_LSB;
-
-  if(tmp & (1 << 11)) // Check for 2's complement negative number
-    tmp = tmp | 0XF000; // Set left bits to one for 2's complement conversion of negitive number
-  
+  tmp = (tmp_MSB & 0x80 ? 0xF000 : 0) | ((uint16_t)tmp_MSB << 4) | (((uint16_t)tmp_LSB & 0xF0) >> 4);
   return tmp;
 }
 
@@ -444,16 +437,7 @@ int16_t get_c1(uint8_t spl_chip_address)
   
   tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X11); 
   tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X12); 
-
-
-  tmp_MSB = tmp_MSB & 0XF;
-
-
-  tmp = (tmp_MSB << 8) | tmp_LSB;
-
-  if(tmp & (1 << 11)) // Check for 2's complement negative number
-    tmp = tmp | 0XF000; // Set left bits to one for 2's complement conversion of negitive number
-  
+  tmp = ((tmp_MSB & 0x8 ? 0xF000 : 0) | ((uint16_t)tmp_MSB & 0x0F) << 8) | (uint16_t)tmp_LSB;
   return tmp;
 }
 
@@ -465,21 +449,7 @@ int32_t get_c00(uint8_t spl_chip_address)
   tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X13); 
   tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X14); 
   tmp_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X15);
-
-
-  
-  tmp_XLSB = tmp_XLSB >> 4;
-
-   
-  tmp = (tmp_MSB << 8) | tmp_LSB;
-  tmp = (tmp << 4) | tmp_XLSB;
-
-  tmp = (uint32_t)tmp_MSB << 12 | (uint32_t)tmp_LSB << 4 | (uint32_t)tmp_XLSB >> 4;
-
-  if(tmp & (1 << 19))
-    tmp = tmp | 0XFFF00000; // Set left bits to one for 2's complement conversion of negitive number
-    
-
+  tmp = (tmp_MSB & 0x80 ? 0xFFF00000 : 0) | ((uint32_t)tmp_MSB << 12) | ((uint32_t)tmp_LSB << 4) | (((uint32_t)tmp_XLSB & 0xF0) >> 4);
   return tmp;
 }
 
@@ -491,25 +461,9 @@ int32_t get_c10(uint8_t spl_chip_address)
   tmp_MSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X15); // 4 bits
   tmp_LSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X16); // 8 bits
   tmp_XLSB = i2c_eeprom_read_uint8_t(spl_chip_address, 0X17); // 8 bits
-
-
-  tmp_MSB = tmp_MSB & 0b00001111;
-
-
-
-  tmp = (tmp_MSB << 4) | tmp_LSB;
-  tmp = (tmp << 8) | tmp_XLSB;
-
-
-
-  tmp = (uint32_t)tmp_MSB << 16 | (uint32_t)tmp_LSB << 8 | (uint32_t)tmp_XLSB;
-
-  if(tmp & (1 << 19))
-    tmp = tmp | 0XFFF00000; // Set left bits to one for 2's complement conversion of negitive number
-
+  tmp = (tmp_MSB & 0x8 ? 0xFFF00000 : 0) | (((uint32_t)tmp_MSB & 0x0F) << 16) | ((uint32_t)tmp_LSB << 8) | (uint32_t)tmp_XLSB;
   return tmp;
 }
-
 
 
 int16_t get_c01(uint8_t spl_chip_address)
@@ -571,8 +525,6 @@ int16_t get_c30(uint8_t spl_chip_address)
 
   tmp = (tmp_MSB << 8) | tmp_LSB;
   return tmp;
-  Serial.print("tmp: ");
-  Serial.println(tmp);
 }
 
 void i2c_eeprom_write_uint8_t( uint8_t deviceaddress, uint8_t eeaddress, uint8_t data ) 
@@ -585,16 +537,14 @@ void i2c_eeprom_write_uint8_t( uint8_t deviceaddress, uint8_t eeaddress, uint8_t
     Wire.endTransmission();
 }
 
-
-
 uint8_t i2c_eeprom_read_uint8_t(  uint8_t deviceaddress, uint8_t eeaddress ) 
 {
     uint8_t rdata = 0xFF;
     Wire.beginTransmission(deviceaddress);
     Wire.write(eeaddress); 
     Wire.endTransmission(false); // false to not release the line
-    
     Wire.requestFrom(deviceaddress,1);
     if (Wire.available()) rdata = Wire.read();
     return rdata;
 }
+

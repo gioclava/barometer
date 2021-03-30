@@ -45,4 +45,4 @@ int32_t get_traw(uint8_t spl_chip_address);
 
 double get_temperature_scale_factor(uint8_t spl_chip_address);
 
-
+uint8_t get_spl_meas_cfg(uint8_t spl_chip_address);
