@@ -22,6 +22,9 @@ uint8_t state = 0;
 
 void SPL_init_precise(uint8_t spl_chip_address)
 {
+  i2c_eeprom_write_uint8_t(spl_chip_address, 0X0C, 0B10001001);
+  delay(100);
+
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X06, 0B0110); //0x26 richiesto da datasheet
 
 	i2c_eeprom_write_uint8_t(spl_chip_address, 0X07, 0B10000010);
@@ -229,6 +232,7 @@ int32_t get_traw(uint8_t spl_chip_address){
     uint8_t rdata = 0xFF;
     int32_t measure;
     uint8_t measure_MSB,measure_LSB,measure_XLSB;
+    delay(5);
     Wire.beginTransmission(spl_chip_address);
     Wire.write(0X03); 
     Wire.endTransmission(false); // false to not release the line
@@ -358,7 +362,6 @@ bool isFifoAvailable(uint8_t spl_chip_address){
 }
 
 boolean pressureAvailable(){
-
   if(state == 0){
     //initiate measure of pressure on both baros
     i2c_eeprom_write_uint8_t(middle_address, 0X08, 0B1);
@@ -398,6 +401,7 @@ int32_t get_praw(uint8_t spl_chip_address)
     uint8_t rdata = 0xFF;
     int32_t measure;
     uint8_t measure_MSB,measure_LSB,measure_XLSB;
+    delay(5);
     Wire.beginTransmission(spl_chip_address);
     Wire.write(0X00); 
     Wire.endTransmission(false); // false to not release the line
@@ -530,7 +534,7 @@ int16_t get_c30(uint8_t spl_chip_address)
 void i2c_eeprom_write_uint8_t( uint8_t deviceaddress, uint8_t eeaddress, uint8_t data ) 
 {
     uint8_t rdata = data;
-    delay(5); // Make sure to delay log enough for EEPROM I2C refresh time
+    delay(10); // Make sure to delay log enough for EEPROM I2C refresh time
     Wire.beginTransmission(deviceaddress);
     Wire.write((uint8_t)(eeaddress));
     Wire.write(rdata);

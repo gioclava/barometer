@@ -109,7 +109,12 @@ void loop() {
     double frontTemperature = getFrontTemperature();
     double difference = frontPressure-middlePressure;
     if(true){
-      Serial.println(difference);
+      Serial.print("speed in pascal: ");
+      Serial.print(difference+6);
+      Serial.print(" altitude in pascal: ");
+      Serial.print(middlePressure);
+      Serial.print("\n");
+
     }
     mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
     if(DEBUG){
