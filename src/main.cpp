@@ -3,11 +3,16 @@
 #include <baro-driver/SPL06-007.h>
 #include <crc/crc.h>
 #include <Wire.h>
+#include <EEPROM.h>
 
 #define DEBUG       1
 #define MSP2_SENSOR_BAROMETER       0x1F05
 #define MSP2_SENSOR_AIRSPEED        0x1F06
+#define PRES_CALIBRATION_ADDRESS 0
+#define SWITCH_PIN 10
 
+long lastCalibration = 0;
+int8_t calibrationValue = 0;
 struct mspSensorAirspeedDataMessage_t {
     uint8_t  instance;
     uint32_t timeMs;
@@ -98,27 +103,35 @@ void setup() {
     Serial.println("SPL init");
     SPL_init();
     Serial.println("SPL init finished");
+    while(!pressureAvailable());
+    calibrationValue = EEPROM.read(PRES_CALIBRATION_ADDRESS);
+    pinMode(SWITCH_PIN,INPUT);
 
 }
 
 void loop() {
+  if((millis()- lastCalibration > 100) && !digitalRead(SWITCH_PIN)){
+    lastCalibration = millis();
+    calibrationValue = (int8_t) (getFrontPressure() - getMiddlePressure());
+    EEPROM.write(PRES_CALIBRATION_ADDRESS, calibrationValue);
+  }
   if(pressureAvailable()){
     double frontPressure = getFrontPressure();
     double middlePressure = getMiddlePressure();
     double middleTemperature = getMiddleTemperature();
     double frontTemperature = getFrontTemperature();
-    double difference = frontPressure-middlePressure;
+    double difference = frontPressure-middlePressure-calibrationValue;
     if(true){
       Serial.print("speed in pascal: ");
-      Serial.print(difference+6);
+      Serial.print(difference);
       Serial.print(" altitude in pascal: ");
       Serial.print(middlePressure);
       Serial.print("\n");
 
     }
-    mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
+    mspSensorAirspeedDataMessage_t speedSensor = { 1, millis(), difference, (int16_t) middleTemperature*100};
     if(DEBUG){
-      //sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+      sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
       }
     else{
       sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
