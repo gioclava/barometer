@@ -5,7 +5,7 @@
 #include <Wire.h>
 #include <EEPROM.h>
 
-#define DEBUG       1
+#define DEBUG      0
 #define MSP2_SENSOR_BAROMETER       0x1F05
 #define MSP2_SENSOR_AIRSPEED        0x1F06
 #define PRES_CALIBRATION_ADDRESS 0
@@ -22,8 +22,6 @@ struct mspSensorAirspeedDataMessage_t {
 
 Stream * _stream;
 uint32_t _timeout;
-mspSensorAirspeedDataMessage_t speedSensor = { 1, 2, 0.0, 3};
-
 
 void mspReset()
 {
@@ -32,23 +30,36 @@ void mspReset()
     _stream->read();
 }
 // https://github.com/iNavFlight/inav/wiki/MSP-V2
-void send(uint16_t messageID, void * payload, uint8_t size)
+void send(uint16_t messageID, void * payload, uint16_t size)
 {
   uint8_t flag = 0;
-  _stream->write('$');
-  _stream->write('X');
-  _stream->write('<');
-  _stream->write(flag);
-  _stream->write(messageID);
-  _stream->write(size);
-  uint8_t checksum = 0;
-  uint8_t * payloadPtr = (uint8_t*)payload;
-  for (uint8_t i = 0; i < size; ++i) {
-    uint8_t b = *(payloadPtr++);
-    checksum = crc8_dvb_s2(checksum, b);
-    _stream->write(b);
-  }
-  _stream->write(checksum);
+    uint8_t crc = 0;
+    uint8_t tmp_buf[2];
+
+    _stream->write('$');
+    _stream->write('X');
+    _stream->write('<');
+
+    crc = crc8_dvb_s2(crc, flag);
+    _stream->write(flag);
+
+    memcpy(tmp_buf, &messageID, 2);
+    crc = crc8_dvb_s2(crc, tmp_buf[0]);
+    crc = crc8_dvb_s2(crc, tmp_buf[1]);
+    _stream->write(tmp_buf, 2);
+
+    memcpy(tmp_buf, &size, 2);
+    crc = crc8_dvb_s2(crc, tmp_buf[0]);
+    crc = crc8_dvb_s2(crc, tmp_buf[1]);
+    _stream->write(tmp_buf, 2);
+
+    uint8_t * payloadPtr = (uint8_t*)payload;
+    for (uint8_t i = 0; i < size; ++i) {
+        uint8_t b = *(payloadPtr++);
+        crc = crc8_dvb_s2(crc, b);
+        _stream->write(b);
+    }
+    _stream->write(crc);
 }
 
 void sendV2(uint8_t messageID, void * payload, uint16_t size)
@@ -99,10 +110,11 @@ void sendDebug(uint16_t messageID, void * payload, uint16_t size)
 
 void setup() {
     Wire.begin();
-    Serial.begin(19200);
-    Serial.println("SPL init");
+    Serial.begin(115200);
+    _stream = &Serial;
+    if(DEBUG) Serial.println("SPL init");
     SPL_init();
-    Serial.println("SPL init finished");
+    if(DEBUG) Serial.println("SPL init finished");
     while(!pressureAvailable());
     calibrationValue = EEPROM.read(PRES_CALIBRATION_ADDRESS);
     pinMode(SWITCH_PIN,INPUT);
@@ -121,7 +133,7 @@ void loop() {
     double middleTemperature = getMiddleTemperature();
     double frontTemperature = getFrontTemperature();
     double difference = frontPressure-middlePressure-calibrationValue;
-    if(true){
+    if(DEBUG){
       Serial.print("speed in pascal: ");
       Serial.print(difference);
       Serial.print(" altitude in pascal: ");
@@ -129,11 +141,13 @@ void loop() {
       Serial.print("\n");
 
     }
-    mspSensorAirspeedDataMessage_t speedSensor = { 1, millis(), difference, (int16_t) middleTemperature*100};
+    mspSensorAirspeedDataMessage_t speedSensor = { 0, millis(), difference, (int16_t) middleTemperature*100};
     if(DEBUG){
       sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
       }
     else{
-      sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
+      send(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+      //sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
+  }
   }
 }
