@@ -10,8 +10,13 @@
 #define MSP2_SENSOR_AIRSPEED        0x1F06
 #define PRES_CALIBRATION_ADDRESS 0
 #define SWITCH_PIN 10
+#define LED_PIN_1 5
+#define LED_PIN_2 6
+#define LED_PIN_3 9
 
+double currentSpeed = 1;
 long lastCalibration = 0;
+long lastUnitSpeedOn = 0;
 int8_t calibrationValue = 0;
 struct mspSensorAirspeedDataMessage_t {
     uint8_t  instance;
@@ -19,6 +24,13 @@ struct mspSensorAirspeedDataMessage_t {
     float    diffPressurePa;
     int16_t  temp;
 };
+
+struct mspSensorBaroDataMessage_t {
+    uint8_t  instance;
+    uint32_t timeMs;
+    float    pressurePa;
+    int16_t  temp; // centi-degrees C
+} ;
 
 Stream * _stream;
 uint32_t _timeout;
@@ -118,36 +130,51 @@ void setup() {
     while(!pressureAvailable());
     calibrationValue = EEPROM.read(PRES_CALIBRATION_ADDRESS);
     pinMode(SWITCH_PIN,INPUT);
-
+    pinMode(LED_PIN_1,OUTPUT);
+    pinMode(LED_PIN_2,OUTPUT);
+    pinMode(LED_PIN_3,OUTPUT);
+    digitalWrite(LED_PIN_1,HIGH);
+    digitalWrite(LED_PIN_2,HIGH);
+    digitalWrite(LED_PIN_3,HIGH);
 }
 
 void loop() {
-  if((millis()- lastCalibration > 100) && !digitalRead(SWITCH_PIN)){
-    lastCalibration = millis();
-    calibrationValue = (int8_t) (getFrontPressure() - getMiddlePressure());
-    EEPROM.write(PRES_CALIBRATION_ADDRESS, calibrationValue);
-  }
   if(pressureAvailable()){
     double frontPressure = getFrontPressure();
     double middlePressure = getMiddlePressure();
     double middleTemperature = getMiddleTemperature();
     double frontTemperature = getFrontTemperature();
     double difference = frontPressure-middlePressure-calibrationValue;
+    if((millis()- lastCalibration > 100) && !digitalRead(SWITCH_PIN)){
+      lastCalibration = millis();
+      calibrationValue = (int8_t) (frontPressure - middlePressure);
+      EEPROM.write(PRES_CALIBRATION_ADDRESS, calibrationValue);
+    }
+    difference = max(1,difference);
+    currentSpeed = sqrt(difference * 2 / 1.225)*3.6;
+    mspSensorAirspeedDataMessage_t speedSensor = { 0, millis(), difference, (int16_t) middleTemperature*100};
+    mspSensorAirspeedDataMessage_t baroSensor = { 0, millis(), middlePressure, (int16_t) middleTemperature*100};
+    
     if(DEBUG){
-      Serial.print("speed in pascal: ");
+      //sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+      Serial.print("dynamicP pascal: ");
       Serial.print(difference);
-      Serial.print(" altitude in pascal: ");
+      Serial.print(" staticP pascal: ");
       Serial.print(middlePressure);
       Serial.print("\n");
-
-    }
-    mspSensorAirspeedDataMessage_t speedSensor = { 0, millis(), difference, (int16_t) middleTemperature*100};
-    if(DEBUG){
-      sendDebug(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
       }
     else{
       send(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));
+      send(MSP2_SENSOR_BAROMETER, &baroSensor, sizeof(baroSensor));
       //sendV2(MSP2_SENSOR_AIRSPEED, &speedSensor, sizeof(speedSensor));}
+    }
   }
+  if(currentSpeed>20) digitalWrite(LED_PIN_3,LOW); else digitalWrite(LED_PIN_3,HIGH);
+  if(currentSpeed>10) digitalWrite(LED_PIN_1,LOW); else digitalWrite(LED_PIN_1,HIGH);
+  if(millis() - lastUnitSpeedOn > 50) digitalWrite(LED_PIN_2,HIGH);
+  if(millis() - lastUnitSpeedOn > 3000/((int)currentSpeed % 10)){
+    lastUnitSpeedOn = millis();
+    digitalWrite(LED_PIN_2,LOW);
+    Serial.println(currentSpeed);
   }
 }
